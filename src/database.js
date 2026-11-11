@@ -1,0 +1,8 @@
+import {DatabaseSync} from 'node:sqlite';import {mkdirSync} from 'node:fs';import session from 'express-session';
+export function openDatabase(path='data/accounts.sqlite'){mkdirSync('data',{recursive:true,mode:0o700});const db=new DatabaseSync(path);db.exec(`PRAGMA journal_mode=WAL;PRAGMA foreign_keys=ON;
+CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,email TEXT UNIQUE NOT NULL,name TEXT NOT NULL,password TEXT,role TEXT NOT NULL DEFAULT 'user',active INTEGER DEFAULT 0,blocked INTEGER DEFAULT 0,failures INTEGER DEFAULT 0,locked_until INTEGER DEFAULT 0,twofa INTEGER DEFAULT 0,version INTEGER DEFAULT 0,created TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS tokens(hash TEXT PRIMARY KEY,user_id INTEGER REFERENCES users(id),purpose TEXT,expires INTEGER);
+CREATE TABLE IF NOT EXISTS logs(id INTEGER PRIMARY KEY,email TEXT,ip TEXT,result TEXT,time TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS identities(issuer TEXT,sub TEXT,user_id INTEGER REFERENCES users(id),PRIMARY KEY(issuer,sub));
+CREATE TABLE IF NOT EXISTS sessions(sid TEXT PRIMARY KEY,data TEXT,expires INTEGER);`);return db;}
+export class SqliteStore extends session.Store{constructor(db){super();this.db=db;}get(sid,cb){try{const r=this.db.prepare('SELECT data FROM sessions WHERE sid=? AND expires>?').get(sid,Date.now());cb(null,r?JSON.parse(r.data):null);}catch(e){cb(e);}}set(sid,value,cb=()=>{}){try{this.db.prepare('INSERT OR REPLACE INTO sessions VALUES(?,?,?)').run(sid,JSON.stringify(value),Date.now()+30*60*1000);cb();}catch(e){cb(e);}}destroy(sid,cb=()=>{}){try{this.db.prepare('DELETE FROM sessions WHERE sid=?').run(sid);cb();}catch(e){cb(e);}}}
